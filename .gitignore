@@ -1,1 +1,5 @@
 /submit/
+/lab2/build/
+/lab2/testing/data/*/log
+/lab2/testing/data/*/out.pcap
+/lab2/.vscode/
