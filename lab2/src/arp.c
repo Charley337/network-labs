@@ -59,6 +59,12 @@ void arp_print()
 void arp_req(uint8_t *target_ip)
 {
     // TO-DO
+    buf_init(&txbuf, sizeof(arp_pkt_t));
+    arp_pkt_t *pkt = (arp_pkt_t *)txbuf.data;
+    memcpy(pkt, &arp_init_pkt, sizeof(arp_pkt_t));
+    pkt->opcode16 = swap16(ARP_REQUEST);
+    memcpy(pkt->target_ip, target_ip, NET_IP_LEN);
+    ethernet_out(&txbuf, ether_broadcast_mac, NET_PROTOCOL_ARP);
 }
 
 /**
@@ -70,6 +76,13 @@ void arp_req(uint8_t *target_ip)
 void arp_resp(uint8_t *target_ip, uint8_t *target_mac)
 {
     // TO-DO
+    buf_init(&txbuf, sizeof(arp_pkt_t));
+    arp_pkt_t *pkt = (arp_pkt_t *)txbuf.data;
+    memcpy(pkt, &arp_init_pkt, sizeof(arp_pkt_t));
+    pkt->opcode16 = swap16(ARP_REPLY);
+    memcpy(pkt->target_ip, target_ip, NET_IP_LEN);
+    memcpy(pkt->target_mac, target_mac, NET_MAC_LEN);
+    ethernet_out(&txbuf, target_mac, NET_PROTOCOL_ARP);
 }
 
 /**
@@ -81,6 +94,22 @@ void arp_resp(uint8_t *target_ip, uint8_t *target_mac)
 void arp_in(buf_t *buf, uint8_t *src_mac)
 {
     // TO-DO
+    if(buf->len >= sizeof(arp_pkt_t)) {
+        arp_pkt_t *pkt = (arp_pkt_t *)buf->data;
+        if((memcmp(pkt, &arp_init_pkt, sizeof(uint16_t) * 2 + sizeof(uint8_t) * 2) == 0)
+            && ((pkt->opcode16 == swap16(ARP_REPLY)) || (pkt->opcode16 == swap16(ARP_REQUEST)))) {
+            // 报头检测
+            map_set(&arp_table, pkt->sender_ip, pkt->sender_mac);
+            buf_t *cache_buf = (buf_t *)map_get(&arp_buf, pkt->sender_ip);
+            if(cache_buf != NULL) {
+                ethernet_out(cache_buf, pkt->sender_mac, NET_PROTOCOL_IP);
+                map_delete(&arp_buf, pkt->sender_ip);
+            }
+            else if((pkt->opcode16 == swap16(ARP_REQUEST)) && (memcmp(pkt->target_ip, net_if_ip, NET_IP_LEN) == 0)) {
+                arp_resp(pkt->sender_ip, pkt->sender_mac);
+            }
+        }
+    }
 }
 
 /**
@@ -93,6 +122,15 @@ void arp_in(buf_t *buf, uint8_t *src_mac)
 void arp_out(buf_t *buf, uint8_t *ip)
 {
     // TO-DO
+    uint8_t *mac = map_get(&arp_table, ip);
+    if(mac != NULL) {
+        // 如果能找到，则直接发送
+        ethernet_out(buf, mac, NET_PROTOCOL_IP);
+    }
+    else if(map_get(&arp_buf, ip) == NULL) {
+        map_set(&arp_buf, ip, buf);
+        arp_req(ip);
+    }
 }
 
 /**
