@@ -19,6 +19,27 @@ map_t udp_table;
 static uint16_t udp_checksum(buf_t *buf, uint8_t *src_ip, uint8_t *dst_ip)
 {
     // TO-DO
+    uint16_t total_len16 = buf->len;
+    int odd = buf->len % 2 == 1;
+    if(odd) {
+        buf_add_padding(buf, 1);
+    }
+    buf_add_header(buf, sizeof(udp_peso_hdr_t));
+    udp_peso_hdr_t ip_backup;
+    memcpy(&ip_backup, buf->data, sizeof(udp_peso_hdr_t));
+    udp_peso_hdr_t *pkt = (udp_peso_hdr_t*)buf->data;
+    memcpy(pkt->src_ip, src_ip, NET_IP_LEN);
+    memcpy(pkt->dst_ip, dst_ip, NET_IP_LEN);
+    pkt->placeholder = 0;
+    pkt->protocol = NET_PROTOCOL_IP;
+    pkt->total_len16 = swap16(total_len16);
+    uint16_t cs16 = checksum16(buf, buf->len);
+    if(odd) {
+        buf_remove_padding(buf, 1);
+    }
+    memcpy(buf->data, &ip_backup, sizeof(udp_peso_hdr_t));
+    buf_remove_header(buf, sizeof(udp_peso_hdr_t));
+    return cs16;
 }
 
 /**
@@ -30,6 +51,23 @@ static uint16_t udp_checksum(buf_t *buf, uint8_t *src_ip, uint8_t *dst_ip)
 void udp_in(buf_t *buf, uint8_t *src_ip)
 {
     // TO-DO
+    if(buf->len >= sizeof(udp_hdr_t)) {
+        udp_hdr_t *pkt = (udp_hdr_t*)buf->data;
+        if(buf->len >= swap16(pkt->total_len16)) {
+            uint16_t cs16 = pkt->checksum16;
+            pkt->checksum16 = 0;
+            if(udp_checksum(buf, src_ip, net_if_ip) == cs16) {
+                net_handler_t *handler = map_get(&udp_table, pkt->dst_port16);
+                if(handler == NULL) {
+                    icmp_unreachable(buf, src_ip, ICMP_CODE_PORT_UNREACH);
+                }
+                else {
+                    buf_remove_header(buf, sizeof(udp_hdr_t));
+                    (*handler)(buf, src_ip);
+                }
+            }
+        }
+    }
 }
 
 /**
@@ -43,6 +81,14 @@ void udp_in(buf_t *buf, uint8_t *src_ip)
 void udp_out(buf_t *buf, uint16_t src_port, uint8_t *dst_ip, uint16_t dst_port)
 {
     // TO-DO
+    buf_add_header(buf, sizeof(udp_hdr_t));
+    udp_hdr_t *pkt = (udp_hdr_t*)buf->data;
+    pkt->src_port16 = swap16(src_port);
+    pkt->dst_port16 = swap16(dst_port);
+    pkt->total_len16 = swap16((uint16_t)buf->len);
+    pkt->checksum16 = 0;
+    pkt->checksum16 = udp_checksum(buf, net_if_ip, dst_ip);
+    ip_out(buf, dst_ip, NET_PROTOCOL_UDP);
 }
 
 /**

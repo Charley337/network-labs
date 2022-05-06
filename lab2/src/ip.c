@@ -16,17 +16,18 @@ void ip_in(buf_t *buf, uint8_t *src_mac)
     if(buf->len >= sizeof(ip_hdr_t)) {
         // check header
         ip_hdr_t *pkt = (ip_hdr_t*)buf->data;
-        if(pkt->version == IP_VERSION_4 && pkt->total_len16 <= buf->len) {
+        uint16_t total_len16 = swap16(pkt->total_len16);
+        if(pkt->version == IP_VERSION_4 && total_len16 <= buf->len) {
             uint16_t hdr_checksum16 = pkt->hdr_checksum16;
             pkt->hdr_checksum16 = 0;
             if(checksum16((uint16_t*)pkt, pkt->hdr_len * 4) == hdr_checksum16) {
                 pkt->hdr_checksum16 = hdr_checksum16;
                 if(memcmp(pkt->dst_ip, net_if_ip, NET_IP_LEN) == 0) {
-                    if(buf->len > pkt->total_len16) {
-                        buf_remove_padding(buf, buf->len - pkt->total_len16);
+                    if(buf->len > total_len16) {
+                        buf_remove_padding(buf, buf->len - total_len16);
                     }
                     buf_remove_header(buf, sizeof(ip_hdr_t));
-                    if(net_in(buf, swap16(pkt->protocol), pkt->src_ip) != 0) {
+                    if(net_in(buf, pkt->protocol, pkt->src_ip) != 0) {
                         icmp_unreachable(buf, pkt->src_ip, ICMP_CODE_PROTOCOL_UNREACH);
                     }
                 }
