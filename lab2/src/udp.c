@@ -31,9 +31,9 @@ static uint16_t udp_checksum(buf_t *buf, uint8_t *src_ip, uint8_t *dst_ip)
     memcpy(pkt->src_ip, src_ip, NET_IP_LEN);
     memcpy(pkt->dst_ip, dst_ip, NET_IP_LEN);
     pkt->placeholder = 0;
-    pkt->protocol = NET_PROTOCOL_IP;
+    pkt->protocol = NET_PROTOCOL_UDP;
     pkt->total_len16 = swap16(total_len16);
-    uint16_t cs16 = checksum16(buf, buf->len);
+    uint16_t cs16 = checksum16(buf->data, buf->len);
     if(odd) {
         buf_remove_padding(buf, 1);
     }
@@ -57,13 +57,15 @@ void udp_in(buf_t *buf, uint8_t *src_ip)
             uint16_t cs16 = pkt->checksum16;
             pkt->checksum16 = 0;
             if(udp_checksum(buf, src_ip, net_if_ip) == cs16) {
-                net_handler_t *handler = map_get(&udp_table, pkt->dst_port16);
+                pkt->checksum16 = cs16;
+                uint16_t dst_port16 = swap16(pkt->dst_port16);
+                udp_handler_t *handler = map_get(&udp_table, &dst_port16);
                 if(handler == NULL) {
                     icmp_unreachable(buf, src_ip, ICMP_CODE_PORT_UNREACH);
                 }
                 else {
                     buf_remove_header(buf, sizeof(udp_hdr_t));
-                    (*handler)(buf, src_ip);
+                    (*handler)(buf->data, buf->len, src_ip, swap16(pkt->src_port16));
                 }
             }
         }
