@@ -1,14 +1,14 @@
 all: send recv
 
 send: base64_utils encode decode base64_utils.h cencode.h cdecode.h
-	gcc send.c base64_utils.o cencode.o cdecode.o base64_utils.h cencode.h cdecode.h -o send
+	gcc send.c base64_utils.o cencode.o cdecode.o base64_utils.h cencode.h cdecode.h -o send -g
 recv: recv.c
-	gcc recv.c -o recv
+	gcc recv.c -o recv -g
 base64_utils: base64_utils.c
-	gcc -c base64_utils.c -o base64_utils.o
+	gcc -c base64_utils.c -o base64_utils.o -g
 encode: cencode.c
-	gcc -c cencode.c -o cencode.o
+	gcc -c cencode.c -o cencode.o -g
 decode: cdecode.c
-	gcc -c cdecode.c -o cdecode.o
+	gcc -c cdecode.c -o cdecode.o -g
 clean:
 	rm -rf *.o send recv
